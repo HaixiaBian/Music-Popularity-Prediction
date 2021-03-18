@@ -1,0 +1,98 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+splr=read.csv("spotifyclean.csv",
+                stringsAsFactors=FALSE,na.strings = "")
+
+splr=splr[,-c(1,3,5, 14)]
+```
+
+
+```{r}
+#VARIABLE TRANSFORMATION FOR LINEARITY
+qplot(x=acousticness, bins=30, data = splr)#very skewed
+qplot(kader:::cuberoot(splr$acousticness))
+splr$acousticness <- -log((1/(kader:::cuberoot(splr$acousticness)))-1, base = exp(1))
+qplot(log(splr$acousticness))#best tranformation
+{qqnorm(splr$acousticness)
+qqline(splr$acousticness)}
+qqPlot(splr$acousticness)
+
+```
+
+
+```{r}
+#MODELS
+
+#all the variables
+model1 <- lm( popularity ~mode_minor_major+acousticness+danceability+duration_minutes+liveness+loudness_decibels+speechiness+tempo_bpm+valence, data = splr)
+
+summary(model1)
+
+#all variables plus all interactions
+model2 <- lm( popularity ~mode_minor_major+acousticness+danceability+duration_minutes+liveness+loudness_decibels+speechiness+tempo_bpm+valence+ loudness_decibels:acousticness+loudness_decibels:valence+loudness_decibels:danceability+danceability:valence, data = splr)
+summary(model2)
+
+
+#reduction by AIC
+library(gvlma)
+library(MASS)
+stepAIC(model2, direction="backward")
+
+
+#reduced model 
+model3=lm(popularity ~ mode_minor_major + acousticness + danceability + 
+    loudness_decibels + speechiness + tempo_bpm + valence + acousticness:loudness_decibels + 
+    danceability:loudness_decibels, data = splr)
+summary(model3)
+
+
+
+#add polynomial acousticness and speechability from distribution graphs 
+model4=lm(popularity ~ mode_minor_major + acousticness + poly(acousticness,2)+ danceability + 
+    loudness_decibels + speechiness + poly(speechiness,2) + tempo_bpm + valence + acousticness:loudness_decibels + 
+    danceability:loudness_decibels, data = splr)
+summary(model4)
+
+stepAIC(model4, direction="backward")
+
+
+#reduced model
+model5=lm(popularity ~ acousticness + poly(acousticness, 2) + 
+    danceability + loudness_decibels + poly(speechiness, 2) + 
+    tempo_bpm + valence + acousticness:loudness_decibels + danceability:loudness_decibels, 
+    data = splr)
+summary(model5)
+
+stepAIC(model5, direction="backward")
+
+
+model6=lm(formula = popularity ~ poly(acousticness, 2) + 
+    danceability + loudness_decibels + poly(speechiness, 2) + 
+    tempo_bpm + valence + acousticness:loudness_decibels + danceability:loudness_decibels, 
+    data = splr)
+summary(model6)
+stepAIC(model6, direction="backward")
+```
+
+
+
+```{r}
+#MODEL PERFORMANCE
+confint(model6)
+
+par(mfrow=c(2,2))
+plot(model6)
+
+library(gvlma)
+gvm=gvlma(model6)
+summary(gvm)
+
+
+
+
+```
+

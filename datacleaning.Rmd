@@ -1,0 +1,341 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+#READ DATA
+
+sp=read.csv("2018_massive.csv",
+                stringsAsFactors=FALSE,na.strings = "")
+
+#get rid of unique columns and time signature
+sp=sp[,-c(1,2,3,4,17)]
+```
+
+
+
+
+```{r}
+#CLEAN THE DATA : Basic Charts
+
+#1.CHANGE DURATION TO MINUTES FROM MILLISECONDS, 3 decimel places
+sp$duration_ms=round(((sp$duration_ms*0.001)/60),3)
+
+
+#2.MISSING VALUES
+which(is.na(sp))
+
+
+#3.OUTLIERS:
+
+#3a. duration
+hist(sp$duration_ms,col="salmon",
+     xlab="Duration (minutes)",
+     freq = FALSE, #show densities instead of freq.
+     main = "Duration distribution")
+summary(sp$duration_ms)
+
+library(ggpubr)
+ggscatter(sp, x = "popularity", y = "duration_ms",
+          xlab = "pop", ylab = "duration", title = "duration", color = "seagreen")+
+    scale_x_continuous(breaks=seq(0,100,10))+
+    geom_hline(yintercept=quantile(sp$duration_ms), color="tomato2", size=1)
+  
+  
+quantile(sp$duration_ms, probs = c(0.1, 0.9))
+
+library(dplyr)
+  sp=dplyr::filter(sp, duration_ms >= c(2))
+  sp=dplyr::filter(sp, duration_ms <= c(10))
+  
+  
+
+#3b. loudness
+hist(sp$loudness,col="salmon",
+     xlab="loudness",
+     freq = FALSE, #show densities instead of freq.
+     main = "loudness distribution")
+  
+  ggscatter(sp, x = "popularity", y = "loudness",
+          xlab = "pop", ylab = "loudness", title = "loudness", color = "seagreen")+
+    scale_x_continuous(breaks=seq(0,100,10))+
+    geom_hline(yintercept=quantile(sp$loudness), color="tomato2", size=1)
+ 
+    sp=dplyr::filter(sp, loudness <= c(0))
+    
+
+#speechiness
+ #scatter with quartiles   
+    
+hist(sp$speechiness,col="salmon",
+     xlab="speechiness",
+     freq = FALSE, #show densities instead of freq.
+     main = "Speechiness distribution")
+quantile(sp$speechiness)
+
+
+ggscatter(sp, x = "popularity", y = "speechiness",
+          xlab = "pop", ylab = "speechiness", title = "speechiness", color = "seagreen")+
+      geom_hline(yintercept=quantile(sp$speechiness), color="tomato2", size=1)
+  
+
+sp=dplyr::filter(sp, speechiness <= c(0.6))
+
+
+
+#3c. tempo
+  ggscatter(sp, x = "popularity", y = "tempo",
+          xlab = "pop", ylab = "tempo", title = "tempo", color = "seagreen")+
+      geom_hline(yintercept=quantile(sp$tempo), color="tomato2", size=1)
+  
+    sp=dplyr::filter(sp, tempo > c(0))
+  
+
+#3d. mode
+mode1=dplyr::filter(sp, mode == c(1))
+mode0=dplyr::filter(sp, mode == c(0))
+mode=nrow(mode1)+nrow(mode0)
+
+
+#3f. key
+key=summarise(group_by(sp,key),
+                             avgpop=mean(popularity, na.rm=TRUE))
+#barchart
+
+ggplot(data=sp, aes(x=sp$key, y=mean(sp$popularity))) +
+  geom_bar(stat="identity", fill= "seagreen")+
+  ggtitle("Average popularity of each key")+
+     scale_x_continuous(breaks=seq(0,11,1))+
+  xlab("Key")+ ylab("Average Popularity")
+
+
+
+
+#4.ADD UNITS TO COLUMN NAMES
+colnames(sp)=c("popularity", "acousticness", "danceability", "duration_minutes", "energy", "instrumentalness", "key", "liveness", "loudness_decibels", "mode_minor_major", "speechiness", "tempo_bpm", "valence")
+
+
+
+
+#5. ADD KEY
+sp$notation=ifelse(sp$key=="0", "C",
+ifelse(sp$key=="1", "C#,Db",
+ifelse(sp$key=="2", "D",
+ifelse(sp$key=="3", "D#,Eb",
+ifelse(sp$key=="4", "E",
+ifelse(sp$key=="5", "F",
+ifelse(sp$key=="6", "F#, Gb",
+ifelse(sp$key=="7", "G",
+ifelse(sp$key=="8", "G#,Ab",
+ifelse(sp$key=="9", "A",
+ifelse(sp$key=="10", "A#, Bb",
+ifelse(sp$key=="11", "B",NA))))))))))))
+
+
+
+```
+
+
+
+
+```{r}
+#UNDERSTAND THE DATA : Distribution Charts
+
+sp$key=as.factor(sp$key)
+
+hist(sp$popularity,col="salmon",
+     xlab="Popularity",
+     freq = FALSE, #show densities instead of freq.
+     main = "Popularity distribution")
+#put in line for mean and value
+
+
+attach(sp)
+opar <- par(no.readonly = TRUE)
+par(mfrow=c(3,3))
+boxplot(acousticness, main = "Boxplot of Acousticness", ylab = "Rating")
+#axis(2, at = seq(0,1,0.1), labels = seq(0,1,0.1))
+boxplot(danceability, main="Boxplot of Danceability", ylab="Rating")
+boxplot(energy, main="Boxplot of Energy", ylab="Rating")
+boxplot(instrumentalness, main="Boxplot of Instrumentalness", ylab="Rating")
+boxplot(liveness, main="Boxplot of Liveness", ylab="Rating")
+boxplot(speechiness, main="Boxplot of Speechiness", ylab="Rating")
+boxplot(valence, main="Boxplot of Happiness", ylab="Rating")
+par(opar)
+detach(sp)
+#colours/ headings
+
+
+attach(sp)
+opar <- par(no.readonly = TRUE)
+par(mfrow=c(3,3))
+hist(acousticness, main = "Accousticness", ylab = "Frequency")
+#axis(2, at = seq(0,1,0.1), labels = seq(0,1,0.1))
+hist(danceability, main="Danceability", ylab="Frequency")
+hist(energy, main="Energy", ylab="Frequency")
+hist(instrumentalness, main="Instrumentalness", ylab="Frequency")
+hist(liveness, main="Liveness", ylab="Frequency")
+hist(speechiness, main="Speechiness", ylab="Frequency")
+hist(valence, main="Happiness", ylab="Frequency")
+par(opar)
+detach(sp)
+#colors headings
+#line for mean
+
+
+
+#distribution of the other features to show where most of the data lies 
+attach(sp)
+opar <- par(no.readonly = TRUE)
+par(mfrow=c(2,2))
+#axis(2, at = seq(0,1,0.1), labels = seq(0,1,0.1))
+hist(duration_minutes, main = "Distribution of Duration", ylab = "Frequency")
+hist(loudness_decibels, main = "Distribution of Loudness", ylab = "Frequency")
+hist(tempo_bpm, main = "Distribution of Tempo", ylab = "Frequency")
+hist(mode_minor_major, main = "Distribution of Mode", ylab = "Frequency")
+par(opar)
+detach(sp)
+#colors headings
+#line for mean
+```
+
+
+
+
+
+```{r}
+#DATA REDUCTION + CORRELATION ANALYSIS
+
+
+sp$key=as.numeric(sp$key)
+cor(sp[,-c(14)]) #bivariate correlations
+
+
+library(psych)
+pairs.panels(sp, 
+             method = "pearson", 
+             hist.col = "#00AFBB",
+             density = TRUE, 
+             ellipses = FALSE)
+
+
+
+
+
+sp=sp[,-c(5,6)] #dimension reduction get rid of energy and instrumentalness
+
+
+
+```
+
+
+
+
+```{r}
+#STANDARDIZE
+
+sp2=sp[,-c(1,5,8,12)]
+sp3=sp[,c(1,5,8,12)]
+
+
+for (i in 1:8) {
+  sp2[,i]=(sp2[,i]-mean(sp2[,i]))/(sd(sp2[,i]))
+  
+}
+
+sp2=round(sp2, digits=3)
+
+
+#arrange dataframe
+spotify=cbind(sp3, sp2)
+
+
+
+#FACTORIZE
+spotify$mode_minor_major=as.factor(spotify$mode_minor_major)
+spotify$key=as.factor(spotify$key)
+
+```
+
+
+
+```{r}
+
+#ADD POPULARITY CATEGORIES
+spotify$popularcategory=1
+
+summary(spotify$popularity)
+
+spotify$popularcategory=ifelse(spotify$popularity<median(spotify$popularity), "0", "1")
+                       
+table(spotify$popularcategory)
+
+spotify$popularcategory=as.factor(spotify$popularcategory)
+
+
+```
+
+```{r}
+#VARIABLE SELECTION
+
+
+
+summary(spotify)
+
+
+attach(spotify)
+opar <- par(no.readonly = TRUE)
+par(mfrow=c(3,4))
+hist(popularity, main = "Popularity", ylab = "Frequency")
+hist(acousticness, main = "Accousticness", ylab = "Frequency")
+hist(danceability, main="Danceability", ylab="Frequency")
+hist(duration_minutes, main="Duration", ylab="Frequency")
+hist(liveness, main="Liveness", ylab="Frequency")
+hist(loudness_decibels, main = "Loudness", ylab = "Frequency")
+hist(speechiness, main="Speechiness", ylab="Frequency")
+hist(tempo_bpm, main = "Tempo", ylab = "Frequency")
+hist(valence, main="Happiness", ylab="Frequency")
+par(opar)
+detach(spotify)
+
+
+write.csv(spotify, file="spotifyclean.csv")
+```
+
+
+
+```{r}
+
+#3D PLOTS
+
+library(rgl)
+
+library(scatterplot3d)
+attach(sp)
+scatterplot3d(danceability, instrumentalness, loudness_decibels,
+pch=16, color = sp$popularity,
+main="3D Scatter Plot")
+#HOW TO CHANGE INTO GRADIENT AND SHOW SCALE?
+
+
+
+library(plotly)
+plot_ly(sp, x = ~danceability, y = ~instrumentalness, z = ~loudness_decibels,
+        marker = list(color = ~sp$popularcategory, colorscale = c('#FFE1A1', '#683531'), showscale = TRUE)) %>%
+  add_markers() %>%
+  layout(scene = list(xaxis = list(title = 'Danceability'),
+                     yaxis = list(title = 'Instrumentalness'),
+                     zaxis = list(title = 'Loudness (decibels)')),
+         annotations = list(
+           x = 1.13,
+           y = 1.05,
+           text = 'popularity',
+           xref = 'popularity',
+           yref = 'popularity',
+           showarrow = FALSE
+         ))
+
+```
+

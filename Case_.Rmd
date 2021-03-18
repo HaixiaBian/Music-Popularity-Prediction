@@ -1,0 +1,292 @@
+---
+title: "Case study_Predictiton"
+output: html_notebook
+---
+
+```{r}
+library(dummies)
+library(ggplot2)
+library(car)
+library(kader)
+library(MASS)
+library(scales)
+library(psych)
+library(e1071)
+library(outliers)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(caret)
+library(mgcv)
+library(ROCR)
+library(gains)
+library(Metrics)
+library(caTools)
+library(e1071)
+library(gmodels)
+library(corrplot)
+library(hydroGOF)
+library(psycho)
+library(gridExtra)
+library(grid)
+library(pROC)
+
+```
+
+
+```{r Import cleaned data}
+Music_ <- read.csv(choose.files())
+str(Music_)
+
+```
+
+```{r Subsets for prediction}
+
+Music1 <- Music_[,c(2:13)]
+Music1.notation <- dummy(Music1$notation, sep = "_")
+Music <- cbind(Music1[,c(1:2, 4:11)], Music1.notation[,-12])
+#music without notation
+Music2 <- Music1[,-4]
+#Music for classification
+Music.cl <- Music_[,c(3:4, 6:14)]
+
+#use PCA to do dimension reduction
+fa.parallel(Music[,-1], fa="pc", n.iter = 100,show.legend = FALSE, main = "Scree plot")#choose 5 pcs
+pc <- principal(Music[,-1], nfactors = 5, rotate="promax",
+                scores = TRUE)
+head(pc$scores)
+round(pc$weights,2)
+
+#data tranformation for normality
+#acousticness
+qplot(x=acousticness, bins=30, data = Music)#very skewed
+qplot(kader:::cuberoot(Music$acousticness))
+Music$acousticness <- -log((1/(kader:::cuberoot(Music$acousticness)))-1, base = exp(1))
+qplot(log(Music$acousticness))#best tranformation
+{qqnorm(Music$acousticness)
+qqline(Music$acousticness)}
+qqPlot(Music$acousticness)
+
+#Danceability
+qplot(Music$danceability)#left skewed
+#log trans
+qplot(log(Music$danceability, base = exp(1)))
+qplot(log1p(Music$danceability))
+qplot(1/Music$danceability)
+qplot(sqrt(Music$danceability))
+qplot(kader:::cuberoot(Music$danceability))
+qplot(log1p(kader:::cuberoot(Music$danceability)))
+
+#normalize new predictors
+normalize <- function(x){
+  return((x-min(x))/(max(x)-min(x)))
+}
+rc1.nor <- normalize(pc$scores[,1])
+rc2.nor <- normalize(pc$scores[,2])
+rc3.nor <- normalize(pc$scores[,3])
+rc4.nor <- normalize(pc$scores[,4])
+rc5.nor <- normalize(pc$scores[,5])
+
+RC <- data.frame(rc1.nor, rc2.nor, rc3.nor, rc4.nor, rc5.nor) 
+#RC1 transformation
+rc1 <- RC[,1]
+{hist(rc1, prob=TRUE)
+lines(density(rc1))}
+{hist(rc1^5, prob=TRUE)
+lines(density(rc1^5))}
+engine.displ <- skewness(rc1^6)
+engine.displ #0.112 onlu moderately skewed
+outlier(rc1^6)
+RC$rc1.nor <- (RC$rc1.nor)^6
+
+#RC2 transforamtion
+rc2 <- RC[,2]
+{hist(rc2, prob=TRUE)
+lines(density(rc2))}
+engine.displ <- skewness(rc2)
+engine.displ
+
+#RC3 transformation
+rc3 <- RC[,3]
+{hist(rc3, prob=TRUE)
+lines(density(rc3))}
+{hist(rc3^2, prob=TRUE)
+lines(density(rc3^2))}
+engine.displ <- skewness(rc3^2)
+engine.displ
+RC$rc3.nor <- (RC$rc3.nor)^2
+
+#RC4 transformation
+rc4 <- RC[,4]
+{hist(rc4, prob=TRUE)
+lines(density(rc4))}
+{hist(rc4^2, prob=TRUE)
+lines(density(rc4^2))}
+engine.displ <- skewness(rc4^2)
+engine.displ
+RC$rc4.nor <- (RC$rc4.nor)^2 
+
+#RC5 transformation
+rc5 <- RC[,5]
+{hist(rc5, prob=TRUE)
+lines(density(rc5))}
+engine.displ <- skewness(rc5)
+engine.displ
+
+RC <- cbind(Music$popularity, RC)
+colnames(RC) <- c("Pop", "RC1", "RC2", "RC3", "RC4", "RC5")
+
+```
+
+```{r partition the datasets and visualize the relationships}
+
+set.seed(123)
+#partitionin by using RC
+train.index1 <- sample(1:8986, 0.5*dim(RC[1]))
+RCTrain <- RC[train.index1,]
+RCV_T <- RC[-train.index1,]
+
+Valid.index1 <- sample(1:3595, 0.6*dim(RCV_T[1]))
+RCValid <- RCV_T[Valid.index1,]
+RCTest <- RCV_T[-Valid.index1,]
+
+#partitioning by using Music1
+set.seed(123)
+colnames(Music) <- c( "popularity","key","acousticness","danceability",      "duration_minutes","liveness","loudness_decibels","speechiness","tempo_bpm","valence", "notation_A","notation_A#_Bb","notation_B","notation_C","notation_C#_Db","notation_D","notation_D#_Eb","notation_E","notation_F","notation_F#_Gb","notation_G")
+train.index2 <- sample(1:8986, 0.5*dim(Music1[1]))
+MusicTrain <- Music1[train.index2,]
+MusicV_T <- Music1[-train.index2,]
+
+Valid.index2 <- sample(1:3595, 0.6*dim(MusicV_T[1]))
+MusicValid <- MusicV_T[Valid.index2,]
+MusicTest <- MusicV_T[-Valid.index2,]
+
+#partioning by music
+set.seed(123)
+train.index3 <- sample(1:8986, 0.5*dim(Music[1]))
+MusicTrain1 <- Music[train.index3,]
+MusicV_T1 <- Music[-train.index3,]
+
+Valid.index3 <- sample(1:3595, 0.6*dim(MusicV_T1[1]))
+MusicValid1 <- MusicV_T1[Valid.index3,]
+MusicTest1 <- MusicV_T1[-Valid.index3,]
+
+#partionning by music2(without notation)
+set.seed(100)
+train.index4 <- sample(1:8986, 0.5*dim(Music2[1]))
+MusicTrain2 <- Music2[train.index4,]
+MusicV_T2 <- Music2[-train.index4,]
+
+Valid.index4 <- sample(1:3595, 0.6*dim(MusicV_T2[1]))
+MusicValid2 <- MusicV_T2[Valid.index4,]
+MusicTest2 <- MusicV_T2[-Valid.index4,]
+
+#partionning by music.cl
+set.seed(123)
+train.index5 <- sample(1:8986, 0.5*dim(Music.cl[1]))
+MusicTrain.cl <- Music.cl[train.index5,]
+MusicV_T.cl <- Music.cl[-train.index5,]
+
+Valid.index5 <- sample(1:3595, 0.6*dim(MusicV_T.cl[1]))
+MusicValid.cl <- MusicV_T.cl[Valid.index5,]
+MusicTest.cl <- MusicV_T.cl[-Valid.index5,]
+
+#visualize 
+attach(RCTrain)
+scatter.smooth(RC1,Pop)
+scatter.smooth(RC2,Pop)
+scatter.smooth(RC3,Pop)
+scatter.smooth(RC4,Pop)
+scatter.smooth(RC5,Pop)
+```
+
+```{r multiple linear regression}
+#fit regression models with lm()
+
+#model 1
+cor(RCTrain)
+music.fit1 <- lm(Pop ~ RC1+RC2+RC3+RC4+RC5, data = RCTrain)
+summary(music.fit1)
+
+#regression diagnostic
+confint(music.fit1)
+##normality: enhanced approach to evaluate
+qqPlot(music.fit1, labels=row.names(RCTrain), id.method="identify", simulate=TRUE, main="Q-Q Plot")
+
+#This model violates the normality
+```
+
+```{r Random forest }
+rf <- randomForest(popularity~., data = MusicTrain2)
+rf
+importance(rf)
+rf.pred.train <- predict(rf, MusicTrain2)
+rf.pred.valid <- predict(rf, MusicValid2)
+rf.pred.test <- predict(rf, MusicTest2)
+
+#use MAE
+MAE(rf.pred.train, MusicTrain2$popularity) #2.608
+MAE(rf.pred.valid, MusicValid2$popularity)#5.925
+MAE(rf.pred.test, MusicTest2$popularity) #6.728
+
+#MAPE
+mape(rf.pred.train, MusicTrain2$popularity) #0.047
+mape(rf.pred.valid, MusicValid2$popularity)#0.106
+mape(rf.pred.test, MusicTest2$popularity) #.121
+
+#use rmse to evaluate the performance
+rmse.train <- RMSE(rf.pred.train, MusicTrain2$popularity)#3.326
+rmse.valid <- RMSE(rf.pred.valid, MusicValid2$popularity)#7.746
+rmse.test <- RMSE(rf.prerd.test, MusicTest2$popularity)#8.031
+
+#Use Mean error
+me(rf.pred.train, MusicTrain2$popularity)#0.077
+me(rf.pred.valid, MusicValid2$popularity)#-1.433
+me(rf.pred.test, MusicTest2$popularity)#2.661
+
+gain <- gains(MusicValid2$popularity,
+              rf.pred.valid, groups = 1000)
+{plot(c(0, gain$cume.pct.of.total*sum(MusicValid2$popularity))~c(0, gain$cume.obs))
+lines(c(0, sum(MusicValid2))~c(0, dim(MusicValid2)[1]))}
+
+#The RMSE shows that this model is good.
+
+```
+
+```{r SVM}
+mu.svm <- svm(Music2[,-1], Music2[,1])
+data.frame(actual=Music2[,1], predicted=mu.svm$fitted)
+rmse.svm <- RMSE(mu.svm$fitted, Music2$popularity)#7.52
+me(mu.svm$fitted, Music2$popularity)
+MAE(mu.svm$fitted, Music2$popularity)
+mape(mu.svm$fitted, Music2$popularity)
+
+lift.svm <- lift(relevel(as.factor(Music.cl$popularcategory), ref="1") ~ mu.svm$fitted)
+xyplot(lift.svm, plot = "gain")
+
+
+#this model is good
+
+```
+
+```{r LDA}
+
+mu.lda <- lda(popularcategory~., MusicTrain.cl)
+mu.lda.pred <- predict(mu.lda, as.data.frame(MusicValid.cl[,-11]))
+data.frame(actual=MusicValid.cl[,11], predicted=mu.lda.pred$class)
+confusionMatrix(as.factor(MusicValid.cl$popularcategory), as.factor(mu.lda.pred$class))
+
+lift.lda <- lift(relevel(as.factor(MusicValid.cl$popularcategory), ref="1") ~ mu.lda.pred$class)
+xyplot(lift.lda, plot = "gain")
+
+r <- roc(as.numeric(MusicValid.cl$popularcategory), as.numeric(mu.lda.pred$class))
+plot.roc(r)
+
+auc(r)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

@@ -1,0 +1,132 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+spdf=read.csv("spotifyclean.csv",
+                stringsAsFactors=FALSE,na.strings = "")
+
+#remove notation
+spdf=spdf[,-c(1,3,5)]
+
+
+```
+
+
+```{r}
+#SAMPLING 60-40
+set.seed(111)
+train.index = sample(row.names(spdf), 0.6*dim(spdf)[1])
+valid.index = setdiff(row.names(spdf), train.index)
+train.df = spdf[train.index,]
+valid.df = spdf[valid.index,]
+
+```
+
+
+```{r}
+#CREATE MODEL MATRIX (REMEMBER TO FACTOR KEY and MODE)
+sptraining <- model.matrix(~factor(mode_minor_major)+ acousticness+danceability+ duration_minutes+liveness+ loudness_decibels+ speechiness+ tempo_bpm+ valence,data=train.df)
+
+spvalid <- model.matrix(~factor(mode_minor_major)+ acousticness+danceability+ duration_minutes+ liveness+ loudness_decibels+ speechiness+ tempo_bpm+ valence,data=valid.df)
+
+
+nrow(spvalid)
+```
+
+```{r}
+#SEPARATE THE OUTPUT COLUMN FROM EACH
+
+train_labels <- train.df$popularity
+valid_labels <- valid.df$popularity
+
+
+train_class <- train.df$popularcategory
+valid_class <- valid.df$popularcategory
+
+```
+
+
+```{r}
+#KNN OF POPULAR CATEGORY - CLASSIFICATION
+
+library(class)
+
+#PICK BEST k
+#best way to pick k is sqrt of number of fields = 70 odd number
+
+#initialize a data frame with two columns: K, and accuracy
+accuracy.df <- data.frame(k=seq(1,150,1), accuracy=rep(0,150))
+
+
+for (i in 1:150) {
+  knn.class <- knn(train = sptraining, test = spvalid,cl = train_class, k=i)
+  accuracy.df[i, 2] <-
+    100*sum(valid_class==knn.class)/NROW(valid_class)
+}
+
+accuracy.df$accuracy=round(accuracy.df$accuracy, digits=1)
+accuracy.df <- accuracy.df[accuracy.df$k %% 2 != 0, ] #get rid of even k values
+
+
+library(ggpubr)
+ggscatter(accuracy.df, x = "k", y = "accuracy",
+          xlab = "k", ylab = "accuracy", title = "k", color = "seagreen")+
+    scale_x_continuous(breaks=seq(0,150,10))
+
+
+
+#MODEL
+classification_knn <- knn(train = sptraining, test = spvalid,cl = train_class, k=35)
+library(gmodels)
+CrossTable(x=valid_class,y=classification_knn, prop.chisq = FALSE)
+table(valid_class, classification_knn)
+
+#plot of lift chart
+library(CustomerScoringMetrics)
+
+cumGainsChart(classification_knn, valid_class, resolution = 1/10)
+```
+
+
+```{r}
+#KNN OF POPULARITY RATING - PREDICTION
+
+#PICK BEST k
+#best way to pick k is sqrt of number of fields = 70 odd number
+
+#initialize a data frame with two columns: K, and accuracy
+accuracy.df2 <- data.frame(k=seq(1,150,1), accuracy=rep(0,150))
+
+
+for (i in 1:150) {
+  knn.pred <- knn(train = sptraining, test = spvalid,cl = train_labels, k=i)
+  accuracy.df2[i, 2] <-
+    100*sum(valid_labels==knn.pred)/NROW(valid_labels)
+}
+
+accuracy.df2$accuracy=round(accuracy.df2$accuracy, digits=2)
+accuracy.df2=na.omit(accuracy.df2)
+accuracy.df2 <- accuracy.df2[accuracy.df2$k %% 2 != 0, ] #get rid of even k values
+
+
+ggscatter(accuracy.df2, x = "k", y = "accuracy",
+          xlab = "k", ylab = "accuracy", title = "k", color = "seagreen")+
+    scale_x_continuous(breaks=seq(0,150,10))
+
+
+
+#MODEL
+prediction_knn <- knn(train = sptraining, test = spvalid,cl = train_labels, k=43)
+
+
+#Model Evaluation
+
+
+#plots
+
+
+
+```
+
